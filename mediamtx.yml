@@ -1,0 +1,44 @@
+###############################################
+# MediaMTX Configuration
+# RTSP Stream with Authentication
+###############################################
+
+# Global settings
+logLevel: info
+logDestinations: [stdout]
+
+# RTSP server
+rtsp: true
+rtspAddress: :8554
+rtspTransports: [tcp, udp]
+
+# RTMP server (disabled)
+rtmp: false
+
+# HLS server (disabled)
+hls: false
+
+# WebRTC server (disabled)
+webrtc: false
+
+# SRT server (disabled)
+srt: false
+
+# API (disabled)
+api: false
+
+# Authentication
+authInternalUsers:
+  - user: admin
+    pass: nppnpg123
+    permissions:
+      - action: publish
+        path: "ISAPI/Streaming/channels/1/picture"
+      - action: read
+        path: "ISAPI/Streaming/channels/1/picture"
+      - action: playback
+        path: "ISAPI/Streaming/channels/1/picture"
+
+# Paths
+paths:
+  ISAPI/Streaming/channels/1/picture: {}
