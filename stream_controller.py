@@ -22,11 +22,7 @@ import socket
 import os
 
 # ── Configuration ──────────────────────────────────────────────
-VIDEO_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "video",
-    "2026-02-19_12-45-47_VehicleID_1637.mp4",
-)
+VIDEO_PATH = "/home/ozzaann/rtsp_stream_vid/gauge/vid_test1.mp4"
 
 RTSP_URL = "rtsp://admin:nppnpg123@localhost:8554/ISAPI/Streaming/channels/1/picture"
 RTSP_USER = "admin"
@@ -156,7 +152,7 @@ def main():
         sys.exit(1)
 
     print("[INFO] Streaming started! Video is PAUSED.")
-    print("[INFO] Press [A] to rewind or [D] to forward on the preview window.\n")
+    print("[INFO] Press [S] to play/pause, [A]/[D] to seek, [Q] to quit.\n")
 
     frame_delay = 1.0 / fps
 
@@ -175,10 +171,26 @@ def main():
         cv2.namedWindow("RTSP Stream Controller", cv2.WINDOW_NORMAL)
         cv2.resizeWindow("RTSP Stream Controller", 960, 540)
 
-    # ── Main loop (video is PAUSED, only moves on a/d) ────────
+    playing = False  # start paused
+
+    # ── Main loop ─────────────────────────────────────────────
     try:
         while True:
             loop_start = time.time()
+
+            # ── Auto-advance if playing ───────────────────────
+            if playing:
+                ret, new_frame_data = cap.read()
+                if not ret:
+                    # Reached end, loop back
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ret, new_frame_data = cap.read()
+                    current_pos = 0
+                    print("[INFO] Video looped back to start.")
+                else:
+                    current_pos = int(cap.get(cv2.CAP_PROP_POS_FRAMES)) - 1
+                if ret:
+                    frame = new_frame_data
 
             # ── Send current (static) frame to FFmpeg ─────────
             try:
@@ -194,15 +206,11 @@ def main():
 
                 # Draw overlay info
                 display = frame.copy()
-                info_text = f"Time: {current_time:.1f}s / {duration:.1f}s"
+                state_text = "PLAYING" if playing else "PAUSED"
+                info_text = f"Time:{current_time:.1f}s/{duration:.1f}s [{state_text}]"
                 cv2.putText(
                     display, info_text, (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2,
-                )
-                controls_text = "[A] Rewind  [D] Forward  [Q] Quit"
-                cv2.putText(
-                    display, controls_text, (10, height - 20),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 1,
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2,
                 )
 
                 cv2.imshow("RTSP Stream Controller", display)
@@ -214,8 +222,17 @@ def main():
                 print("[INFO] Quit requested.")
                 break
 
+            elif key == ord("s"):
+                # Toggle play/pause
+                playing = not playing
+                if playing:
+                    print("[PLAY] ▶ Video playing")
+                else:
+                    print("[PAUSE] ⏸ Video paused")
+
             elif key == ord("a"):
                 # Rewind
+                playing = False  # pause when seeking
                 seek_frames = int(SEEK_SECONDS * fps)
                 new_frame = max(0, current_pos - seek_frames)
                 cap.set(cv2.CAP_PROP_POS_FRAMES, new_frame)
@@ -230,12 +247,12 @@ def main():
 
             elif key == ord("d"):
                 # Fast-forward
+                playing = False  # pause when seeking
                 seek_frames = int(SEEK_SECONDS * fps)
                 new_frame = min(total_frames - 1, current_pos + seek_frames)
                 cap.set(cv2.CAP_PROP_POS_FRAMES, new_frame)
                 ret, frame = cap.read()
                 if not ret:
-                    # Reached end, stay at last valid frame
                     cap.set(cv2.CAP_PROP_POS_FRAMES, total_frames - 2)
                     ret, frame = cap.read()
                     new_frame = total_frames - 2
