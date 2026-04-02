@@ -24,13 +24,18 @@ import os
 import select
 import termios
 import tty
+import shutil
 import yaml
 
+# ── Resolve paths relative to this script ─────────────────────
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
+
+MEDIAMTX_BIN = os.path.join(SCRIPT_DIR, "mediamtx")
+MEDIAMTX_CONF = os.path.join(SCRIPT_DIR, "mediamtx.yml")
+
 # ── Load Configuration from YAML ──────────────────────────────
-CONFIG_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "config", "stream_config.yaml"
-)
+CONFIG_PATH = os.path.join(PROJECT_DIR, "config", "stream_config.yaml")
 
 
 def load_config(config_path):
@@ -69,7 +74,45 @@ def get_local_ip():
         return "127.0.0.1"
 
 
+# ── Pre-flight checks ─────────────────────────────────────────
+def preflight_checks():
+    """Verify that required dependencies are available."""
+    errors = []
+    if not os.path.isfile(MEDIAMTX_BIN):
+        errors.append(
+            f"MediaMTX binary not found at: {MEDIAMTX_BIN}\n"
+            f"       Run: bash setup_mediamtx.sh"
+        )
+    if not shutil.which("ffmpeg"):
+        errors.append(
+            "ffmpeg not found. Install with: sudo apt install ffmpeg -y"
+        )
+    if errors:
+        for e in errors:
+            print(f"[ERROR] {e}")
+        sys.exit(1)
+
+
+def start_mediamtx():
+    """Start the MediaMTX server as a background process and return the Popen."""
+    print("[INFO] Starting MediaMTX server...")
+    proc = subprocess.Popen(
+        [MEDIAMTX_BIN, MEDIAMTX_CONF],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    # Give it a moment to initialise
+    time.sleep(2)
+    if proc.poll() is not None:
+        stderr = proc.stderr.read().decode(errors="replace")
+        print(f"[ERROR] MediaMTX failed to start:\n{stderr}")
+        sys.exit(1)
+    print(f"[OK]   MediaMTX running (PID: {proc.pid})")
+    return proc
+
+
 # ── Globals ────────────────────────────────────────────────────
+mediamtx_process = None
 ffmpeg_process = None
 original_term_settings = None
 
@@ -86,10 +129,11 @@ def restore_terminal():
 
 
 def cleanup(*args):
-    """Graceful shutdown."""
-    global ffmpeg_process
+    """Graceful shutdown — stop FFmpeg and MediaMTX."""
+    global ffmpeg_process, mediamtx_process
     restore_terminal()
     print("\n[INFO] Shutting down...")
+    # Stop FFmpeg
     if ffmpeg_process and ffmpeg_process.poll() is None:
         try:
             ffmpeg_process.stdin.close()
@@ -100,6 +144,16 @@ def cleanup(*args):
             ffmpeg_process.wait(timeout=3)
         except Exception:
             ffmpeg_process.kill()
+        print("[OK]   FFmpeg stopped.")
+    # Stop MediaMTX
+    if mediamtx_process and mediamtx_process.poll() is None:
+        try:
+            mediamtx_process.terminate()
+            mediamtx_process.wait(timeout=3)
+        except Exception:
+            mediamtx_process.kill()
+        print("[OK]   MediaMTX stopped.")
+    print("[DONE] All services stopped.")
     sys.exit(0)
 
 
@@ -175,7 +229,14 @@ def print_status(current_pos, total_frames, fps, duration, playing):
 
 
 def main():
-    global ffmpeg_process
+    global ffmpeg_process, mediamtx_process
+
+    # ── Pre-flight checks ─────────────────────────────────────
+    preflight_checks()
+
+    # ── Start MediaMTX ────────────────────────────────────────
+    mediamtx_process = start_mediamtx()
+    print()
 
     # ── Open video ─────────────────────────────────────────────
     if not os.path.isfile(VIDEO_PATH):
