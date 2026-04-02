@@ -31,8 +31,8 @@ import yaml
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 
-MEDIAMTX_BIN = os.path.join(SCRIPT_DIR, "mediamtx")
-MEDIAMTX_CONF = os.path.join(SCRIPT_DIR, "mediamtx.yml")
+MEDIAMTX_BIN = os.path.join(PROJECT_DIR, "config", "mediamtx")
+MEDIAMTX_CONF = os.path.join(PROJECT_DIR, "config", "mediamtx.yml")
 
 # ── Load Configuration from YAML ──────────────────────────────
 CONFIG_PATH = os.path.join(PROJECT_DIR, "config", "stream_config.yaml")
