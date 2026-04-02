@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-RTSP Video Stream Controller with Interactive Playback Controls
-
+RTSP Video Stream Controller (Headless / No GUI)
+=================================================
 Streams a video file to MediaMTX via RTSP, with keyboard controls
-for seeking forward/backward.
+for seeking forward/backward. Runs entirely in terminal — no display needed.
 
-Controls (on the preview window):
-    a  - Rewind 1 seconds
-    d  - Fast-forward 1 seconds
+Controls (terminal keyboard):
+    s  - Play / Pause toggle
+    a  - Rewind 1 second
+    d  - Fast-forward 1 second
     q  - Quit
 
 RTSP URL: rtsp://admin:nppnpg123@localhost:8554/ISAPI/Streaming/channels/1/picture
@@ -20,18 +21,40 @@ import time
 import signal
 import socket
 import os
+import select
+import termios
+import tty
+import yaml
 
-# ── Configuration ──────────────────────────────────────────────
-VIDEO_PATH = "/home/ozzaann/rtsp_stream_vid/gauge/vid_test1.mp4"
+# ── Load Configuration from YAML ──────────────────────────────
+CONFIG_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "config", "stream_config.yaml"
+)
 
-RTSP_URL = "rtsp://admin:nppnpg123@localhost:8554/ISAPI/Streaming/channels/1/picture"
-RTSP_USER = "admin"
-RTSP_PASS = "nppnpg123"
-RTSP_PATH = "ISAPI/Streaming/channels/1/picture"
-RTSP_PORT = 8554
 
-SEEK_SECONDS = 1        # seconds to seek on a/d keypress
-PREVIEW_WINDOW = True   # show local preview window
+def load_config(config_path):
+    """Load configuration from YAML file."""
+    if not os.path.isfile(config_path):
+        print(f"[ERROR] Config file not found: {config_path}")
+        sys.exit(1)
+    with open(config_path, "r") as f:
+        cfg = yaml.safe_load(f)
+    return cfg
+
+
+_cfg = load_config(CONFIG_PATH)
+
+VIDEO_PATH = _cfg["video"]["path"]
+
+RTSP_URL = _cfg["rtsp"]["url"]
+RTSP_USER = _cfg["rtsp"]["user"]
+RTSP_PASS = _cfg["rtsp"]["password"]
+RTSP_PATH = _cfg["rtsp"]["path"]
+RTSP_PORT = _cfg["rtsp"]["port"]
+
+SEEK_SECONDS = _cfg["controls"]["seek_seconds"]
+STATUS_INTERVAL = _cfg["controls"]["status_interval"]
 
 
 def get_local_ip():
@@ -48,11 +71,24 @@ def get_local_ip():
 
 # ── Globals ────────────────────────────────────────────────────
 ffmpeg_process = None
+original_term_settings = None
+
+
+def restore_terminal():
+    """Restore original terminal settings."""
+    global original_term_settings
+    if original_term_settings is not None:
+        try:
+            termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN,
+                              original_term_settings)
+        except Exception:
+            pass
 
 
 def cleanup(*args):
     """Graceful shutdown."""
     global ffmpeg_process
+    restore_terminal()
     print("\n[INFO] Shutting down...")
     if ffmpeg_process and ffmpeg_process.poll() is None:
         try:
@@ -64,12 +100,29 @@ def cleanup(*args):
             ffmpeg_process.wait(timeout=3)
         except Exception:
             ffmpeg_process.kill()
-    cv2.destroyAllWindows()
     sys.exit(0)
 
 
 signal.signal(signal.SIGINT, cleanup)
 signal.signal(signal.SIGTERM, cleanup)
+
+
+def setup_terminal_raw():
+    """Set terminal to raw mode for single-keypress reading."""
+    global original_term_settings
+    try:
+        original_term_settings = termios.tcgetattr(sys.stdin.fileno())
+        tty.setcbreak(sys.stdin.fileno())
+    except Exception:
+        # If stdin is not a terminal (e.g. piped), skip raw mode
+        original_term_settings = None
+
+
+def read_key():
+    """Non-blocking read a single key from terminal. Returns None if no key."""
+    if select.select([sys.stdin], [], [], 0)[0]:
+        return sys.stdin.read(1)
+    return None
 
 
 def start_ffmpeg(width, height, fps):
@@ -102,6 +155,25 @@ def start_ffmpeg(width, height, fps):
     return proc
 
 
+def print_status(current_pos, total_frames, fps, duration, playing):
+    """Print status line in terminal (in-place update using \\r)."""
+    current_time = current_pos / fps
+    state = "▶ PLAYING" if playing else "⏸ PAUSED "
+    bar_width = 30
+    progress = current_pos / total_frames if total_frames > 0 else 0
+    filled = int(bar_width * progress)
+    bar = "█" * filled + "░" * (bar_width - filled)
+
+    status = (
+        f"\r  [{state}] "
+        f"{current_time:6.1f}s / {duration:.1f}s "
+        f"|{bar}| "
+        f"Frame {current_pos}/{total_frames}  "
+    )
+    sys.stdout.write(status)
+    sys.stdout.flush()
+
+
 def main():
     global ffmpeg_process
 
@@ -125,16 +197,17 @@ def main():
     rtsp_address = f"rtsp://{RTSP_USER}:{RTSP_PASS}@{local_ip}:{RTSP_PORT}/{RTSP_PATH}"
 
     print("=" * 60)
-    print("  RTSP Video Stream Controller")
+    print("  RTSP Video Stream Controller (Headless)")
     print("=" * 60)
     print(f"  Video    : {os.path.basename(VIDEO_PATH)}")
     print(f"  Size     : {width}x{height} @ {fps:.1f} FPS")
     print(f"  Duration : {duration:.1f} seconds ({total_frames} frames)")
     print("-" * 60)
-    print(f"  ▶ RTSP Address (gunakan ini untuk streaming):")
+    print(f"  ▶ RTSP Stream URL (gunakan ini untuk streaming):")
     print(f"    {rtsp_address}")
     print("-" * 60)
-    print("  Controls:")
+    print("  Controls (ketik langsung, tanpa Enter):")
+    print(f"    [s] Play / Pause")
     print(f"    [a] Rewind {SEEK_SECONDS} second(s)")
     print(f"    [d] Fast-forward {SEEK_SECONDS} second(s)")
     print("    [q] Quit")
@@ -152,7 +225,7 @@ def main():
         sys.exit(1)
 
     print("[INFO] Streaming started! Video is PAUSED.")
-    print("[INFO] Press [S] to play/pause, [A]/[D] to seek, [Q] to quit.\n")
+    print("[INFO] Tekan [s] untuk play/pause, [a]/[d] untuk seek, [q] untuk quit.\n")
 
     frame_delay = 1.0 / fps
 
@@ -166,12 +239,12 @@ def main():
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
     current_pos = 0
 
-    # ── Create resizable preview window ───────────────────────
-    if PREVIEW_WINDOW:
-        cv2.namedWindow("RTSP Stream Controller", cv2.WINDOW_NORMAL)
-        cv2.resizeWindow("RTSP Stream Controller", 960, 540)
-
     playing = False  # start paused
+
+    # ── Setup terminal raw mode ───────────────────────────────
+    setup_terminal_raw()
+
+    last_status_time = 0
 
     # ── Main loop ─────────────────────────────────────────────
     try:
@@ -186,51 +259,46 @@ def main():
                     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     ret, new_frame_data = cap.read()
                     current_pos = 0
+                    sys.stdout.write("\n")
                     print("[INFO] Video looped back to start.")
                 else:
                     current_pos = int(cap.get(cv2.CAP_PROP_POS_FRAMES)) - 1
                 if ret:
                     frame = new_frame_data
 
-            # ── Send current (static) frame to FFmpeg ─────────
+            # ── Send current frame to FFmpeg ──────────────────
             try:
                 ffmpeg_process.stdin.write(frame.tobytes())
             except BrokenPipeError:
                 stderr = ffmpeg_process.stderr.read().decode()
+                sys.stdout.write("\n")
                 print(f"[ERROR] FFmpeg pipe broken:\n{stderr[-500:]}")
                 break
 
-            # ── Show preview ──────────────────────────────────
-            if PREVIEW_WINDOW:
-                current_time = current_pos / fps
+            # ── Print status periodically ─────────────────────
+            now = time.time()
+            if now - last_status_time >= STATUS_INTERVAL:
+                print_status(current_pos, total_frames, fps, duration, playing)
+                last_status_time = now
 
-                # Draw overlay info
-                display = frame.copy()
-                state_text = "PLAYING" if playing else "PAUSED"
-                info_text = f"Time:{current_time:.1f}s/{duration:.1f}s [{state_text}]"
-                cv2.putText(
-                    display, info_text, (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2,
-                )
+            # ── Handle keyboard (non-blocking) ────────────────
+            key = read_key()
 
-                cv2.imshow("RTSP Stream Controller", display)
-
-            # ── Handle keyboard ───────────────────────────────
-            key = cv2.waitKey(1) & 0xFF
-
-            if key == ord("q"):
+            if key == "q":
+                sys.stdout.write("\n")
                 print("[INFO] Quit requested.")
                 break
 
-            elif key == ord("s"):
+            elif key == "s":
                 # Toggle play/pause
                 playing = not playing
+                sys.stdout.write("\n")
                 if playing:
                     print("[PLAY] ▶ Video playing")
                 else:
                     print("[PAUSE] ⏸ Video paused")
 
-            elif key == ord("a"):
+            elif key == "a":
                 # Rewind
                 playing = False  # pause when seeking
                 seek_frames = int(SEEK_SECONDS * fps)
@@ -243,9 +311,10 @@ def main():
                     new_frame = 0
                 current_pos = new_frame
                 new_time = current_pos / fps
+                sys.stdout.write("\n")
                 print(f"[SEEK] ◀◀ Rewind to {new_time:.1f}s")
 
-            elif key == ord("d"):
+            elif key == "d":
                 # Fast-forward
                 playing = False  # pause when seeking
                 seek_frames = int(SEEK_SECONDS * fps)
@@ -258,6 +327,7 @@ def main():
                     new_frame = total_frames - 2
                 current_pos = new_frame
                 new_time = current_pos / fps
+                sys.stdout.write("\n")
                 print(f"[SEEK] ▶▶ Forward to {new_time:.1f}s")
 
             # ── Frame rate control ────────────────────────────

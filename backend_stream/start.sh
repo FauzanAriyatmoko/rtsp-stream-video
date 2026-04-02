@@ -9,7 +9,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MEDIAMTX_BIN="${SCRIPT_DIR}/mediamtx"
 MEDIAMTX_CONF="${SCRIPT_DIR}/mediamtx.yml"
-VENV_DIR="${SCRIPT_DIR}/.stream"
+VENV_DIR="${SCRIPT_DIR}/../.stream"
 STREAM_SCRIPT="${SCRIPT_DIR}/stream_controller.py"
 
 # Colors

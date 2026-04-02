@@ -1,21 +1,21 @@
-# RTSP Video Streaming with MediaMTX
+# RTSP Video Streaming with MediaMTX (Headless)
 
 Stream video file via RTSP menggunakan MediaMTX server, dengan kontrol interaktif maju/mundur.
+**Berjalan sepenuhnya di terminal** — tidak membutuhkan GUI/display (in server).
 
-Video **tidak auto-play** — diam di frame pertama sampai ditekan tombol `a` atau `d`.
+Video **tidak auto-play** — diam di frame pertama sampai ditekan tombol `s` untuk play.
 
 ## Struktur File
 
 ```
 rtsp_stream_vid/
-├── setup_mediamtx.sh      # Download MediaMTX binary
 ├── mediamtx.yml           # Konfigurasi MediaMTX (auth + path)
-├── stream_controller.py   # Python script: streaming + kontrol
+├── stream_controller.py   # Python script: streaming + kontrol (headless)
 ├── start.sh               # Launcher (MediaMTX + controller)
 ├── mediamtx               # MediaMTX binary (auto-download)
 ├── .stream/               # Python virtual environment
-└── video/
-    └── 2026-02-19_12-45-47_VehicleID_1637.mp4
+└── gauge/
+    └── vid_test1.mp4
 ```
 
 ## Setup
@@ -47,21 +47,22 @@ bash start.sh
 
 Script akan:
 1. Start MediaMTX server di background
-2. Menampilkan **RTSP URL** yang bisa digunakan
-3. Membuka preview window (resizable, default 960x540)
-4. Video **diam di frame pertama** sampai ditekan `a` atau `d`
+2. Menampilkan **RTSP URL** yang bisa digunakan untuk computer vision
+3. Video **diam di frame pertama** sampai ditekan `s`
+4. Semua kontrol melalui **terminal** (tanpa GUI)
 
 ## Kontrol
 
-Tekan tombol di **preview window**:
+Tekan tombol langsung di **terminal** (perlu Enter):
 
 | Tombol | Fungsi                        |
 |--------|-------------------------------|
+| `s`    | Play / Pause toggle           |
 | `a`    | Mundur 1 detik                |
 | `d`    | Maju 1 detik                  |
 | `q`    | Keluar / Stop streaming       |
 
-> **Note:** Video tidak berjalan otomatis. Setiap tekan `a`/`d` memindahkan posisi 1 detik, lalu berhenti lagi.
+> **Note:** Saat seek (`a`/`d`), video otomatis pause. Tekan `s` untuk melanjutkan play.
 
 ## RTSP URL
 
@@ -69,6 +70,17 @@ URL akan otomatis ditampilkan saat menjalankan `start.sh`, formatnya:
 
 ```
 rtsp://admin:nppnpg123@<IP_ADDRESS>:8554/ISAPI/Streaming/channels/1/picture
+```
+
+### Menggunakan untuk Computer Vision (Python)
+
+```python
+import cv2
+cap = cv2.VideoCapture("rtsp://admin:nppnpg123@<IP>:8554/ISAPI/Streaming/channels/1/picture")
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
 ```
 
 ### Menonton Stream
@@ -83,14 +95,9 @@ Media → Open Network Stream → masukkan RTSP URL
 ffplay rtsp://admin:nppnpg123@<IP>:8554/ISAPI/Streaming/channels/1/picture
 ```
 
-**OpenCV (Python):**
-```python
-import cv2
-cap = cv2.VideoCapture("rtsp://admin:nppnpg123@<IP>:8554/ISAPI/Streaming/channels/1/picture")
-```
-
 ## Catatan
 
-- Video asli menggunakan codec **MPEG-4 Part 2** → di-re-encode ke **H.264** secara real-time oleh FFmpeg
+- Video asli di-re-encode ke **H.264** secara real-time oleh FFmpeg
 - Authentication: `admin` / `nppnpg123`
-- Preview window bisa di-resize dengan drag
+- Program berjalan **headless** — tidak membutuhkan X11/Wayland/display
+- Cocok untuk dijalankan di **server** atau melalui **SSH**

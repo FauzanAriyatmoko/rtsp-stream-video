@@ -1,0 +1,16 @@
+# ── Stream Controller Configuration ──────────────────────────
+# Konfigurasi untuk RTSP Video Stream Controller
+
+video:
+  path: "/home/ozzaann/rtsp_stream_vid/video/vid_test1.mp4"
+
+rtsp:
+  url: "rtsp://admin:nppnpg123@localhost:8554/ISAPI/Streaming/channels/1/picture"
+  user: "admin"
+  password: "nppnpg123"
+  path: "ISAPI/Streaming/channels/1/picture"
+  port: 8554
+
+controls:
+  seek_seconds: 1          # detik untuk maju/mundur per keypress
+  status_interval: 1.0     # interval update status di terminal (detik)
