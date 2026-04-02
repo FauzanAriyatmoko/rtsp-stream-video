@@ -68,7 +68,7 @@ controls:
 
 ```bash
 cd backend_stream
-bash start.sh
+python3 stream_controller.py
 ```
 
 Script akan:
