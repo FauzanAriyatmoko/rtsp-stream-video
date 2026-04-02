@@ -9,13 +9,18 @@ Video **tidak auto-play** — diam di frame pertama sampai ditekan tombol `s` un
 
 ```
 rtsp_stream_vid/
-├── mediamtx.yml           # Konfigurasi MediaMTX (auth + path)
-├── stream_controller.py   # Python script: streaming + kontrol (headless)
-├── start.sh               # Launcher (MediaMTX + controller)
-├── mediamtx               # MediaMTX binary (auto-download)
-├── .stream/               # Python virtual environment
-└── gauge/
-    └── vid_test1.mp4
+├── backend_stream/
+│   ├── start.sh               # Launcher (MediaMTX + controller)
+│   ├── stream_controller.py   # Python script: streaming + kontrol (headless)
+│   ├── mediamtx               # MediaMTX binary
+│   └── mediamtx.yml           # Konfigurasi MediaMTX (auth + path)
+├── config/
+│   └── stream_config.yaml     # Konfigurasi stream (video, RTSP, controls)
+├── video/
+│   └── vid_test1.mp4
+├── .stream/                   # Python virtual environment
+├── requirements.txt
+└── README.md
 ```
 
 ## Setup
@@ -30,7 +35,7 @@ bash setup_mediamtx.sh
 
 ```bash
 source .stream/bin/activate
-pip install opencv-python
+pip install -r requirements.txt
 ```
 
 ### 3. FFmpeg
@@ -39,9 +44,30 @@ pip install opencv-python
 sudo apt install ffmpeg -y
 ```
 
+## Konfigurasi
+
+Edit file `config/stream_config.yaml` untuk mengatur:
+
+```yaml
+video:
+  path: "/home/ozzaann/rtsp_stream_vid/video/vid_test1.mp4"
+
+rtsp:
+  url: "rtsp://admin:nppnpg123@localhost:8554/..."
+  user: "admin"
+  password: "nppnpg123"
+  path: "ISAPI/Streaming/channels/1/picture"
+  port: 8554
+
+controls:
+  seek_seconds: 1
+  status_interval: 1.0
+```
+
 ## Cara Menjalankan
 
 ```bash
+cd backend_stream
 bash start.sh
 ```
 
@@ -101,3 +127,4 @@ ffplay rtsp://admin:nppnpg123@<IP>:8554/ISAPI/Streaming/channels/1/picture
 - Authentication: `admin` / `nppnpg123`
 - Program berjalan **headless** — tidak membutuhkan X11/Wayland/display
 - Cocok untuk dijalankan di **server** atau melalui **SSH**
+- Konfigurasi terpisah di `config/stream_config.yaml`
